@@ -267,17 +267,29 @@ def estimate(
     "Name of the baseline architecture for ratio comparison "
     "(e.g. 'anthropic-code-review')."
 ))
+@click.option("--baseline-cost", type=float, default=None, help=(
+    "Override the baseline cost in USD/run for ratio calculations "
+    "(e.g. 20.0 for a $20 commercial product)."
+))
 @click.option("--task-type", default=None, help=(
     "Override task type for token heuristics "
     "(code-review, code-generation, etc.)."
 ))
+@click.option("--task-label", default=None, help=(
+    "Short label shown in the report title (e.g. 'code-review task')."
+))
+@click.option("--preset", default=None, type=click.Choice(["code-review"], case_sensitive=False),
+              help="Use a predefined set of 5 architectures for comparison.")
 @click.option("--with-ledger", is_flag=True, default=False, help=(
     "Include actual run data from the local ledger."
 ))
 def compare(
     archs: Optional[str],
     baseline: Optional[str],
+    baseline_cost: Optional[float],
     task_type: Optional[str],
+    task_label: Optional[str],
+    preset: Optional[str],
     with_ledger: bool,
 ) -> None:
     """Compare multiple architectures side-by-side on cost.
@@ -290,20 +302,34 @@ def compare(
 
       cost compare --archs haiku,sonnet,opus --task-type code-review
 
+      cost compare --preset code-review --with-ledger
+
       cost compare --archs single-agent-haiku,3-agent-sonnet --with-ledger
     """
     from costmodel.comparator import ArchitectureComparator
     from costmodel.models import get_architecture, list_architectures, BUILTIN_ARCHITECTURES
-    from costmodel.pricing import MODEL_ALIASES
 
-    # Build architecture list
-    arch_names: list[str] = []
-    if archs:
-        arch_names = [a.strip() for a in archs.split(",")]
+    # ── Preset: code-review ─────────────────────────────────────────────────
+    if preset == "code-review":
+        arch_names = [
+            "code-review-haiku",
+            "code-review-sonnet",
+            "code-review-opus",
+            "3-agent-sonnet",
+            "anthropic-code-review",
+        ]
+        if baseline is None:
+            baseline = "anthropic-code-review"
+        if task_label is None:
+            task_label = "code-review task"
     else:
-        # Default: compare the three main single-agent architectures
-        arch_names = ["single-agent-haiku", "single-agent-sonnet", "single-agent-opus"]
-        console.print("[dim]No --archs specified; comparing single-agent haiku/sonnet/opus.[/dim]")
+        # Build architecture list from --archs or default
+        arch_names = []
+        if archs:
+            arch_names = [a.strip() for a in archs.split(",")]
+        else:
+            arch_names = ["single-agent-haiku", "single-agent-sonnet", "single-agent-opus"]
+            console.print("[dim]No --archs specified; comparing single-agent haiku/sonnet/opus.[/dim]")
 
     architectures = []
     for name in arch_names:
@@ -347,7 +373,7 @@ def compare(
 
     # Set baseline
     if baseline:
-        # Check if baseline is in our list
+        # Check if baseline is already in our list
         baseline_names = [a.name for a in architectures]
         if baseline not in baseline_names:
             # Try to add it
@@ -366,81 +392,13 @@ def compare(
             comp.add(baseline_arch)
         comp.set_baseline(baseline)
 
-    report = comp.compare()
+    report = comp.compare(
+        baseline_cost=baseline_cost,
+        task_label=task_label or (task_type or ""),
+    )
 
-    # ── Print comparison table ───────────────────────────────────────────────
-    title = "Architecture Comparison"
-    if task_type:
-        title += f": {task_type}"
-    console.print()
-    console.print(f"[bold]{title}[/bold]")
-    console.print()
-
-    tbl = Table(box=box.SIMPLE_HEAVY, show_footer=False)
-    tbl.add_column("Architecture", style="cyan")
-    tbl.add_column("Est/Run", justify="right", style="yellow")
-    tbl.add_column("Act/Run", justify="right")
-    tbl.add_column("At 1K/day", justify="right")
-    tbl.add_column("Runs", justify="right")
-    if report.baseline_name:
-        tbl.add_column("vs Baseline", justify="right", style="magenta")
-
-    for row in report.rows:
-        act_str = _fmt_usd(row.act_per_run) if row.act_per_run is not None else "[dim]N/A[/dim]"
-        baseline_str = ""
-        if report.baseline_name:
-            if row.name == report.baseline_name:
-                baseline_str = "[dim]baseline[/dim]"
-            elif row.vs_baseline_ratio is not None:
-                ratio = row.vs_baseline_ratio
-                if ratio < 1.0:
-                    baseline_str = f"[green]{ratio:.4f}×[/green]"
-                else:
-                    baseline_str = f"[red]{ratio:.2f}×[/red]"
-
-        row_data = [
-            row.name,
-            _fmt_usd(row.est_per_run),
-            act_str,
-            _fmt_usd(row.per_1000_day),
-            str(row.run_count) if row.run_count > 0 else "[dim]0[/dim]",
-        ]
-        if report.baseline_name:
-            row_data.append(baseline_str)
-
-        tbl.add_row(*row_data)
-
-    console.print(tbl)
-
-    # ── Cherny hypothesis check ──────────────────────────────────────────────
-    if report.cherny:
-        ch = report.cherny
-        console.print()
-        console.print("[bold]Cherny Hypothesis Check[/bold]")
-        console.print(
-            f"  Comparing [cyan]{ch.model_a}[/cyan] (expensive) "
-            f"vs [cyan]{ch.model_b}[/cyan] (cheap)"
-        )
-        console.print(
-            f"  Cost ratio: [yellow]{ch.cost_ratio:.1f}×[/yellow] "
-            f"({_fmt_usd(ch.cost_a)} vs {_fmt_usd(ch.cost_b)}) — "
-            f"[dim]source: {ch.data_source}[/dim]"
-        )
-        console.print(
-            f"  Breakeven: if expensive model needs [yellow]{ch.breakeven_ratio:.1f}×[/yellow] "
-            f"fewer retries/corrections, it wins on total cost"
-        )
-
-        if ch.verdict == "INSUFFICIENT_DATA":
-            console.print(f"  [yellow]⚠ {ch.verdict_detail}[/yellow]")
-        elif ch.verdict == "MODEL_A_WINS":
-            console.print(f"  [green]✓ {ch.verdict_detail}[/green]")
-        elif ch.verdict == "MODEL_B_WINS":
-            console.print(f"  [red]✗ {ch.verdict_detail}[/red]")
-        else:
-            console.print(f"  [yellow]~ {ch.verdict_detail}[/yellow]")
-
-    console.print()
+    # Use the ComparisonReport.render() method for output
+    report.render(console=console)
 
 
 # ---------------------------------------------------------------------------

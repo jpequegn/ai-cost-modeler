@@ -232,6 +232,44 @@ class CostLedger:
             total_cost_usd=sum(costs),
         )
 
+    def retry_rate_for_architecture(self, architecture_name: str) -> Optional[float]:
+        """Return the retry rate for an architecture as a fraction (0.0–1.0+).
+
+        The retry rate is computed as:
+            (total API calls - number of runs) / number of runs
+
+        A value of 0.0 means every run succeeded on the first attempt.
+        A value of 0.5 means runs needed 50% more calls than a no-retry baseline.
+
+        Returns None if there are fewer than 5 runs (not enough data).
+        """
+        row = self._conn.execute(
+            """
+            SELECT COUNT(DISTINCT run_id) AS run_count
+            FROM api_calls
+            WHERE architecture_name = ?
+            """,
+            (architecture_name,),
+        ).fetchone()
+        run_count = row["run_count"] if row else 0
+        if run_count < 5:
+            return None
+
+        call_row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total_calls
+            FROM api_calls
+            WHERE architecture_name = ?
+            """,
+            (architecture_name,),
+        ).fetchone()
+        total_calls = call_row["total_calls"] if call_row else 0
+        if run_count == 0:
+            return None
+
+        # retry_rate = extra calls per run
+        return (total_calls - run_count) / run_count
+
     def calls_for_model(
         self,
         model: str,
