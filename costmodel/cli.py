@@ -533,9 +533,26 @@ def cherny_check(
         sys.exit(1)
 
     # Map model → architecture name in ledger
-    # We look for runs where architecture_name contains the model name
-    stats_a = ledger.architecture_stats(f"single-agent-{model_a}")
-    stats_b = ledger.architecture_stats(f"single-agent-{model_b}")
+    # Try multiple naming conventions: nano-agent-*, single-agent-*, agent-*, etc.
+    # Prefer the one with the most recorded runs.
+    def _find_arch_stats(model_name: str):
+        """Try multiple architecture naming patterns; return stats for the one with most runs."""
+        patterns = [
+            f"nano-agent-{model_name}",
+            f"single-agent-{model_name}",
+            f"agent-{model_name}",
+            model_name,
+        ]
+        best = None
+        for pattern in patterns:
+            s = ledger.architecture_stats(pattern)
+            if s and s.run_count > 0:
+                if best is None or s.run_count > best.run_count:
+                    best = s
+        return best
+
+    stats_a = _find_arch_stats(model_a)
+    stats_b = _find_arch_stats(model_b)
 
     console.print()
     console.print("[bold]Cherny Hypothesis Check[/bold]")
