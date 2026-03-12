@@ -205,12 +205,13 @@ def estimate(
         stage_table.add_column("Out Tokens", justify="right")
         stage_table.add_column("Cost/Run", justify="right", style="yellow")
 
-        for s in est.per_stage:
+        for stage_name, stage_cost in est.per_stage.items():
+            tokens = est.token_breakdown.get(stage_name, {})
             stage_table.add_row(
-                s.stage_name,
-                _fmt_tokens(s.input_tokens),
-                _fmt_tokens(s.output_tokens),
-                _fmt_usd(s.cost_usd),
+                stage_name,
+                _fmt_tokens(tokens.get("input", 0)),
+                _fmt_tokens(tokens.get("output", 0)),
+                _fmt_usd(stage_cost),
             )
         console.print(stage_table)
         console.print()
