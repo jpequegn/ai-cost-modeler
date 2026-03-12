@@ -11,6 +11,13 @@ from costmodel.comparator import (
 from costmodel.models import Architecture, Stage, ModelCall, BUILTIN_ARCHITECTURES
 from costmodel.estimator import CostEstimate, estimate
 from costmodel.ledger import CostLedger, ArchStats
+from costmodel.pricing import (
+    PRICING,
+    PRICING_VERSION,
+    cost_usd,
+    count_tokens,
+    estimate_output_tokens,
+)
 
 __all__ = [
     "ArchitectureComparator",
@@ -25,4 +32,10 @@ __all__ = [
     "estimate",
     "CostLedger",
     "ArchStats",
+    # pricing
+    "PRICING",
+    "PRICING_VERSION",
+    "cost_usd",
+    "count_tokens",
+    "estimate_output_tokens",
 ]
