@@ -1,0 +1,27 @@
+# Example architecture YAML file
+# Usage: cost estimate --arch examples/my-arch.yaml
+name: example-multi-stage
+description: >
+  A two-stage pipeline: Opus for planning, Sonnet for parallel execution.
+stages:
+  - name: planning
+    calls:
+      - model: claude-opus-4-5
+        input_tokens: 2000
+        output_tokens: 500
+
+  - name: execution
+    parallel: true            # calls run in parallel (affects latency, not cost)
+    condition: 0.9            # 90% chance this stage runs
+    calls:
+      - model: claude-sonnet-4-5
+        input_tokens: 6000
+        output_tokens: 800
+        repeats: 2            # two parallel Sonnet calls per run
+
+  - name: synthesis
+    calls:
+      - model: claude-opus-4-5
+        input_tokens: 4000
+        output_tokens: 600
+        cached_input_tokens: 1000  # expect 1K tokens from prompt cache
