@@ -89,6 +89,17 @@ PRICING: dict[str, dict[str, float]] = {
         "cache_write": 1.00,
         "cache_read": 0.08,
     },
+    # ── External / flat-rate services ───────────────────────────────────────
+    # Use model="external" for flat-rate services where billing is not
+    # token-based (e.g. Anthropic's commercial code-review product).
+    # All rates are zero — cost should be annotated in the Architecture
+    # description instead.
+    "external": {
+        "input": 0.00,
+        "output": 0.00,
+        "cache_write": 0.00,
+        "cache_read": 0.00,
+    },
     # ── OpenAI models ────────────────────────────────────────────────────────
     "gpt-4o": {
         "input": 2.50,

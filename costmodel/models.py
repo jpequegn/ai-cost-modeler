@@ -5,7 +5,9 @@ These describe *expected* (estimated) architectures before running them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import yaml
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
 
 
 @dataclass
@@ -38,6 +40,115 @@ class Architecture:
     stages: list[Stage]
     description: str = ""
     tags: list[str] = field(default_factory=list)
+
+    # ------------------------------------------------------------------
+    # YAML serialisation
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> "Architecture":
+        """Load an Architecture from a YAML file.
+
+        Expected YAML format::
+
+            name: my-arch
+            description: Optional description
+            tags:
+              - code-review
+            stages:
+              - name: planning
+                calls:
+                  - model: claude-opus-4-5
+                    input_tokens: 2000
+                    output_tokens: 500
+              - name: review
+                parallel: true
+                condition: 0.8
+                calls:
+                  - model: claude-sonnet-4-5
+                    input_tokens: 8000
+                    output_tokens: 1000
+                    repeats: 3
+
+        Args:
+            path: Path to the YAML file.
+
+        Returns:
+            An :class:`Architecture` instance.
+        """
+        data = yaml.safe_load(Path(path).read_text())
+        stages: list[Stage] = []
+        for s in data.get("stages", []):
+            calls: list[ModelCall] = []
+            for c in s.get("calls", []):
+                calls.append(
+                    ModelCall(
+                        model=c["model"],
+                        input_tokens=int(c.get("input_tokens", 0)),
+                        output_tokens=int(c.get("output_tokens", 0)),
+                        cached_input_tokens=int(c.get("cached_input_tokens", 0)),
+                        cache_write_tokens=int(c.get("cache_write_tokens", 0)),
+                        repeats=int(c.get("repeats", 1)),
+                    )
+                )
+            stages.append(
+                Stage(
+                    name=s["name"],
+                    calls=calls,
+                    parallel=bool(s.get("parallel", False)),
+                    condition=float(s.get("condition", 1.0)),
+                )
+            )
+        return cls(
+            name=data.get("name", Path(path).stem),
+            description=data.get("description", ""),
+            stages=stages,
+            tags=data.get("tags", []),
+        )
+
+    def to_yaml(self, path: str | Path | None = None) -> str:
+        """Serialise this Architecture to YAML.
+
+        Args:
+            path: If given, write the YAML to this file in addition to
+                  returning it as a string.
+
+        Returns:
+            YAML string representation of the architecture.
+        """
+        data: dict = {
+            "name": self.name,
+            "description": self.description,
+        }
+        if self.tags:
+            data["tags"] = list(self.tags)
+        data["stages"] = []
+        for stage in self.stages:
+            s: dict = {"name": stage.name}
+            if stage.parallel:
+                s["parallel"] = True
+            if stage.condition != 1.0:
+                s["condition"] = stage.condition
+            s["calls"] = []
+            for call in stage.calls:
+                c: dict = {
+                    "model": call.model,
+                    "input_tokens": call.input_tokens,
+                    "output_tokens": call.output_tokens,
+                }
+                if call.cached_input_tokens:
+                    c["cached_input_tokens"] = call.cached_input_tokens
+                if call.cache_write_tokens:
+                    c["cache_write_tokens"] = call.cache_write_tokens
+                if call.repeats != 1:
+                    c["repeats"] = call.repeats
+                s["calls"].append(c)
+            data["stages"].append(s)
+
+        text = yaml.dump(data, default_flow_style=False, sort_keys=False)
+        if path is not None:
+            Path(path).write_text(text)
+        return text
 
 
 # ---------------------------------------------------------------------------
