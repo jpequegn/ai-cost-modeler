@@ -18,6 +18,13 @@ from costmodel.pricing import (
     count_tokens,
     estimate_output_tokens,
 )
+from costmodel.architectures.presets import (
+    SINGLE_AGENT_HAIKU,
+    SINGLE_AGENT_SONNET,
+    SINGLE_AGENT_OPUS,
+    THREE_AGENT_SONNET,
+    ANTHROPIC_CODE_REVIEW,
+)
 
 __all__ = [
     "ArchitectureComparator",
@@ -40,4 +47,10 @@ __all__ = [
     "cost_usd",
     "count_tokens",
     "estimate_output_tokens",
+    # architecture presets
+    "SINGLE_AGENT_HAIKU",
+    "SINGLE_AGENT_SONNET",
+    "SINGLE_AGENT_OPUS",
+    "THREE_AGENT_SONNET",
+    "ANTHROPIC_CODE_REVIEW",
 ]
